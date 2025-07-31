@@ -8,7 +8,7 @@ const {
   isAuthenticated,
   isOwnerOrAdmin
 } = require("../middlewares/authMiddleware");
-const { body } = require("express-validator");
+const { body,validationResult } = require("express-validator");
 const ErrorHandler = require("../middlewares/errorMiddleware");
 const Submission = require('../models/Submission');
 

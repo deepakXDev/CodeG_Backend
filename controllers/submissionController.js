@@ -8,6 +8,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
+const os = require('os');
 
 /**
  * @description Submit solution for a problem
@@ -59,7 +60,7 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
 // 1. executeCode (3Files_provide, with time & memoryLimt); -->getVerdictFromError call if (code!==0 ie -1 or, whatever..as process.on(1st argument: code))
 // a/c to code-->MLE,TLE,RE,SE decide...by getVerdictFromError (switch fxn)
 // 2. count the testCasesPassed && clean the files
-// 3. update Submission && update UserStats ... all in one session (ie grouped)
+// 3. update Submission (testCases passed, totalTestCases..) && update UserStats ... all in one session (ie grouped)
 
 async function processSubmission(submission, problem) {
   const session = await mongoose.startSession();
@@ -67,18 +68,32 @@ async function processSubmission(submission, problem) {
 
   try {
     // Create temporary files for processing
+    // const tempDir = path.join(os.tmpdir(), 'online-judge'); //tmpdir->of os..so autoClean by os_itself..
+
     const tempDir = path.join(process.cwd(), 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir);
     }
 
     const uniqueId = uuidv4();
-    const sourceFile = path.join(tempDir, `${uniqueId}.${submission.language}`);
-    const inputFile = path.join(tempDir, `${uniqueId}_input.txt`);
-    const outputFile = path.join(tempDir, `${uniqueId}_output.txt`);
+    
+    // const sourceFile = path.join(tempDir, `${uniqueId}.${submission.language}`);
+    // const inputFile = path.join(tempDir, `${uniqueId}_input.txt`);
+    // const outputFile = path.join(tempDir, `${uniqueId}_output.txt`);
+    
+    const sourceFile = path.resolve(tempDir, `${uniqueId}.${submission.language}`);
+    const inputFile = path.resolve(tempDir, `${uniqueId}_input.txt`);
+    const outputFile = path.resolve(tempDir, `${uniqueId}_output.txt`);
+
+    // const quotePath = (p) => `"${p.replace(/\\/g, '/')}"`; // Helps in shell-safe quoting
 
     // Write source code to file
+    // fs.writeFileSync(sourceFile, submission.sourceCode);
+
+    console.log("Saving to sourceFile:", sourceFile);
     fs.writeFileSync(sourceFile, submission.sourceCode);
+    console.log("File saved. Exists?", fs.existsSync(sourceFile));  // Check before compile
+
 
     // Process each test case
     let passedCases = 0;
@@ -86,9 +101,11 @@ async function processSubmission(submission, problem) {
 
     for (const testCase of problem.testCases) {
       // Write input to file
-      fs.writeFileSync(inputFile, testCase.input);
+      fs.writeFileSync(inputFile, testCase.input); //- Clears file first → then writes this input.
+    
 
       // Execute code with timeout
+      // This step runs as a promise using `spawn()`
       const { stdout, stderr, code } = await executeCode(
         submission.language,
         sourceFile,
@@ -105,6 +122,8 @@ async function processSubmission(submission, problem) {
         break;
       }
 
+      //So **yes, it starts from top of file**, not from where last left off.
+      // file is guaranteed to have only the **latest output**, not previous ones.
       const userOutput = fs.readFileSync(outputFile, 'utf-8').trim();
       if (userOutput === testCase.output.trim()) {
         passedCases++;
@@ -112,12 +131,31 @@ async function processSubmission(submission, problem) {
         submission.verdict = 'WA';
         break;
       }
+
+      // // not need to read from outputFile, as also in resolve->passed "stdout"..
+      // const expected = JSON.stringify(JSON.parse(testCase.output));
+      // const actual = JSON.stringify(JSON.parse(stdout));
+      // if (actual !== expected) {
+      //   submission.verdict = 'Wrong Answer';
+      //   break;
+      // }
+
     }
 
     // Clean up files
-    [sourceFile, inputFile, outputFile].forEach(file => {
-      if (fs.existsSync(file)) fs.unlinkSync(file);
-    });
+    // [sourceFile, inputFile, outputFile].forEach(file => {
+    //   console.log(file);
+    //   if (fs.existsSync(file)) fs.unlinkSync(file);
+    // });
+
+    // const tempFiles = [sourceFile, inputFile, outputFile];
+    // tempFiles.forEach((file) => {
+    //   try {
+    //     if (fs.existsSync(file)) fs.unlinkSync(file);
+    //   } catch (err) {
+    //     console.warn(`Failed to delete ${file}:`, err);
+    //   }
+    // });
 
     // Update submission
     submission.testCasesPassed = passedCases;
@@ -151,70 +189,153 @@ async function processSubmission(submission, problem) {
 
 // 'code' && 'data'-->process.stdout.on && process.on --> 1st argument..
 
+// function executeCode(language, sourceFile, inputFile, outputFile, timeLimit, memoryLimit) {
+  
+//   //All this (process) is wrapped in a **Promise** that resolves once the code finishes or is killed.
+
+//   return new Promise((resolve) => {
+//     let command, args;
+    
+//     switch (language) {
+//       case 'python':
+//         command = 'python3';
+//         args = [sourceFile];
+//         break;
+//       case 'cpp':
+//         command = 'g++';
+//         args = [sourceFile, '-o', `${sourceFile}.out`, '&&', `${sourceFile}.out`];
+//         break;
+//       case 'java':
+//         command = 'java';
+//         args = [sourceFile];
+//         break;
+//       case 'javascript':
+//         command = 'node';
+//         args = [sourceFile];
+//         break;
+//       default:
+//         throw new Error('Unsupported language');
+//     }
+
+//     //create new child Process (python/c++/..a/c to command && args)
+//     const process = spawn(command, args, {
+//       stdio: ['pipe', 'pipe', 'pipe'], //three pipe-->for stdin,stdout,stderr (provide input, read output, read err)
+//       shell: true
+//     });
+
+//     // Set time and memory limits
+//     let timedOut = false;
+//     const timeout = setTimeout(() => {
+//       timedOut = true;
+//       process.kill(); //terminates the on_going process
+//     }, timeLimit);
+
+//     // Write input to stdin
+//     const input = fs.readFileSync(inputFile);
+//     process.stdin.write(input); //write input to child_process
+//     process.stdin.end(); //close input stream..to start execution
+
+//     let stdout = '';
+//     let stderr = '';
+    
+//     process.stdout.on('data', (data) => { //recieves ouput in chunks..
+//       stdout += data.toString();
+//     });
+
+//     process.stderr.on('data', (data) => {
+//       stderr += data.toString();
+//     });
+
+//     process.on('close', (code) => { //called (.on**) when child process exits (success or, error)
+//       clearTimeout(timeout);
+      
+//       if (timedOut) {
+//         resolve({ stdout: '', stderr: 'Time Limit Exceeded', code: -1 });
+//       } else {
+//         // Write output to file
+//         // Clears file first → then writes this input.
+//         fs.writeFileSync(outputFile, stdout);
+//         resolve({ stdout, stderr, code });
+//       }
+//     });
+//   });
+// }
+
+
 function executeCode(language, sourceFile, inputFile, outputFile, timeLimit, memoryLimit) {
   return new Promise((resolve) => {
-    let command, args;
-    
-    switch (language) {
-      case 'python':
-        command = 'python3';
-        args = [sourceFile];
-        break;
-      case 'cpp':
-        command = 'g++';
-        args = [sourceFile, '-o', `${sourceFile}.out`, '&&', `${sourceFile}.out`];
-        break;
-      case 'java':
-        command = 'java';
-        args = [sourceFile];
-        break;
-      case 'javascript':
-        command = 'node';
-        args = [sourceFile];
-        break;
-      default:
-        throw new Error('Unsupported language');
+    const ext = path.extname(sourceFile);
+
+    const outputExt = process.platform === 'win32' ? '.exe' : '.out';
+    const exeFile = sourceFile.replace(ext, outputExt);
+
+    let compileCmd = null;
+    if (language === 'cpp') {
+      // Compilation step
+      compileCmd = spawn('g++', [sourceFile, '-o', exeFile], {
+        shell: true
+      });
+
+      compileCmd.on('close', (code) => {
+        if (code !== 0) {
+          return resolve({
+            stdout: '',
+            stderr: `Compilation failed with code ${code}`,
+            code: 1,
+          });
+        }
+
+        // Execution step
+        const runCmd = process.platform === 'win32' ? exeFile : `./${path.basename(exeFile)}`;
+        runExecutable(runCmd, inputFile, outputFile, timeLimit, resolve);
+      });
+    } else if (language === 'python') {
+      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+      runExecutable(pythonCmd, inputFile, outputFile, timeLimit, resolve, [sourceFile]); //python3->linux
+    } else if (language === 'javascript') {
+      runExecutable('node', inputFile, outputFile, timeLimit, resolve, [sourceFile]);
+    } 
+    //also java->javac Main.java && then java Main..to compile & run..
+    else {
+      return resolve({ stdout: '', stderr: 'Unsupported language', code: 1 });
     }
+  });
+}
 
-    const process = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true
-    });
+function runExecutable(cmd, inputFile, outputFile, timeLimit, resolve, args = []) {
+  const process = spawn(cmd, args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: false
+  });
 
-    // Set time and memory limits
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      process.kill();
-    }, timeLimit);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    process.kill();
+  }, timeLimit);
 
-    // Write input to stdin
-    const input = fs.readFileSync(inputFile);
-    process.stdin.write(input);
-    process.stdin.end();
+  const input = fs.readFileSync(inputFile);
+  process.stdin.write(input);
+  process.stdin.end();
 
-    let stdout = '';
-    let stderr = '';
-    
-    process.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
+  let stdout = '';
+  let stderr = '';
 
-    process.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+  process.stdout.on('data', (data) => {
+    stdout += data.toString();
+  });
 
-    process.on('close', (code) => {
-      clearTimeout(timeout);
-      
-      if (timedOut) {
-        resolve({ stdout: '', stderr: 'Time Limit Exceeded', code: -1 });
-      } else {
-        // Write output to file
-        fs.writeFileSync(outputFile, stdout);
-        resolve({ stdout, stderr, code });
-      }
-    });
+  process.stderr.on('data', (data) => {
+    stderr += data.toString();
+  });
+
+  process.on('close', (code) => {
+    clearTimeout(timeout);
+    if (timedOut) {
+      return resolve({ stdout: '', stderr: 'Time Limit Exceeded', code: -1 });
+    }
+    fs.writeFileSync(outputFile, stdout);
+    resolve({ stdout, stderr, code });
   });
 }
 
@@ -240,16 +361,27 @@ async function updateUserStats(submission, session) {
   const userId = submission.userId;
   const problemId = submission.problemId;
   const verdict = submission.verdict;
+
   const submissionDate = new Date(submission.createdAt).toISOString().split('T')[0];
 
   // Update UserStats
+
+  const problem = await Problem.findById(problemId);
+  if (!problem) throw new Error("Problem not found");
+  const difficulty = problem.difficulty; // 'easy', 'medium', 'hard'
+
   const statsUpdate = {
-    $inc: { totalSubmissions: 1 },
+    // $inc: { totalSubmissions: 1 },
+    $inc: {
+      totalSubmissions: 1,
+      [`difficultyStats.${difficulty}.submissions`]: 1
+    },
     $set: { lastSubmissionDate: submissionDate }
   };
 
   if (verdict === 'AC') {
     statsUpdate.$inc.totalAccepted = 1;
+    statsUpdate.$inc[`difficultyStats.${difficulty}.solved`] = 1;
     statsUpdate.$addToSet = { solvedProblemIds: problemId };
   }
 
@@ -273,7 +405,7 @@ async function updateUserStats(submission, session) {
   }
 
   // Update activity heatmap
-  statsUpdate.$inc = statsUpdate.$inc || {};
+  statsUpdate.$inc = statsUpdate.$inc || {}; //Hence, you **ensure `$inc` exists** before you assign:
   statsUpdate.$inc[`activityHeatmap.${submissionDate}`] = 1;
 
   await UserStats.findOneAndUpdate(

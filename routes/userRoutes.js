@@ -5,7 +5,8 @@ const {
 } = require("../controllers/userController");
 const {
   isAuthenticated,
-  isAdmin
+  // isAdmin
+  isOwnerOrAdmin
 } = require("../middlewares/authMiddleware");
 
 
@@ -18,8 +19,8 @@ router.get("/:userId/profile", getUserProfile);
 router.get(
   "/:userId/activity",
   isAuthenticated,
-  // isOwnerOrAdmin(null, 'userId', 'params'),
-  isAdmin,
+  isOwnerOrAdmin(null, 'userId', 'params'),
+  // isAdmin,
   getUserActivity
 );
 

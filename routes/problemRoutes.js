@@ -6,7 +6,9 @@ const {
   updateProblem
 } = require("../controllers/problemController");
 const { isAuthenticated, requireRole, isAdmin } = require("../middlewares/authMiddleware");
-const { body } = require("express-validator");
+// const { body } = require("express-validator");
+const {body,validationResult}=require("express-validator");
+
 const ErrorHandler = require("../middlewares/errorMiddleware");
 const router = express.Router();
 

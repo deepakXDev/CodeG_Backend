@@ -25,6 +25,7 @@
     "google-auth-library": "^10.2.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.5",
+    "mongoose-paginate-v2": "^1.9.1",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "node-schedule": "^2.1.1",

@@ -1,4 +1,6 @@
 const mongoose=require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2'); // 👈 Add this
+// Mongoose does not have a built-in .paginate() method, you need to explicitly add the plugin mongoose-paginate-v2.
 
 const testCaseSchema = new mongoose.Schema({
   input: { type: String, required: true },
@@ -78,5 +80,8 @@ problemSchema.virtual('acceptedCount', {
   count: true,
   match: { verdict: 'AC' }
 });
+
+// npm install mongoose-paginate-v2
+problemSchema.plugin(mongoosePaginate); // 👈 Add this
 
 module.exports=mongoose.model('Problem', problemSchema);

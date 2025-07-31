@@ -1,4 +1,6 @@
 const mongoose=require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2'); // 👈 Add this
+
 
 const submissionSchema = new mongoose.Schema({
   userId: { 
@@ -69,5 +71,8 @@ submissionSchema.virtual('user', {
   justOne: true,
   options: { select: 'username email' }
 });
+
+submissionSchema.plugin(mongoosePaginate); // 👈 Add this
+
 
 module.exports=mongoose.model('Submission', submissionSchema);
