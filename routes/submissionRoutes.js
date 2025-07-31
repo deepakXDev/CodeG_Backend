@@ -4,6 +4,10 @@ const {
   getSubmission,
   getUserSubmissions
 } = require("../controllers/submissionController");
+
+const controller = require('../controllers/submissionController');
+const upload = require('../middlewares/upload');
+
 const {
   isAuthenticated,
   isOwnerOrAdmin
@@ -18,7 +22,10 @@ const router = express.Router();
 const validateSubmission = [
   body('problemSlug').notEmpty().withMessage('Problem slug is required'),
   body('language').isIn(['cpp', 'java', 'python', 'javascript']).withMessage('Invalid language'),
-  body('sourceCode').notEmpty().withMessage('Source code is required'),
+  // body('sourceCode').notEmpty().withMessage('Source code is required'), //as also fileUpload option
+  
+  
+
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -33,6 +40,11 @@ const validateSubmission = [
 router.post(
   "/",
   isAuthenticated,
+  // validateSubmission, //before need multer to parse the formData->file && req.body && then use such middlewares..
+   upload.fields([
+    { name: 'sourceCode', maxCount: 1 }, //sourceCode->fieldName in multer (file.filedName)
+    // { name: 'sampleInput', maxCount: 1 },
+  ]),
   validateSubmission,
   submitSolution
 );
@@ -52,5 +64,18 @@ router.get(
   isOwnerOrAdmin(null, 'userId', 'params'),
   getUserSubmissions
 );
+
+
+router.post(
+  '/run-sample',
+  upload.fields([
+    { name: 'sourceCode', maxCount: 1 }, //sourceCode->fieldName in multer (file.filedName)
+    // { name: 'sampleInput', maxCount: 1 },
+  ]),
+  controller.runSampleTest
+);
+
+router.get('/download/:id', controller.downloadSourceCode);
+
 
 module.exports=router;

@@ -9,6 +9,7 @@ const path = require("path");
 const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const os = require('os');
+const executeCode=require("../utils/codeRunner");
 
 /**
  * @description Submit solution for a problem
@@ -20,7 +21,7 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
   const userId = req.user._id;
 
   // Validate input
-  if (!problemSlug || !language || !sourceCode) {
+  if (!problemSlug || !language) {
     return next(new ErrorHandler('Missing required fields', 400));
   }
 
@@ -30,12 +31,28 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler('Problem not found', 404));
   }
 
-  // Create submission record
+  let sourceFilePath = null;
+  // const tempDir = path.join(process.cwd(), 'temp'); //use resolve && beSafe..
+  const tempDir = path.resolve(process.cwd(), 'uploads/source');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+  if (req.files?.['sourceCode']?.[0]) {
+    sourceFilePath = req.files['sourceCode'][0].path;
+  } else if (sourceCode) {
+    // Write to file and save its path
+    const fileName = `${uuidv4()}.${language}`;
+    sourceFilePath = path.resolve(tempDir, fileName);
+    fs.writeFileSync(sourceFilePath, sourceCode);
+  } else {
+    return next(new ErrorHandler('No code submitted', 400));
+  }
+
   const submission = await Submission.create({
     userId,
     problemId: problem._id,
     language,
-    sourceCode,
+    sourceCode: sourceCode || '', // still store raw text for UI view
+    filePath: sourceFilePath,
     verdict: 'PENDING'
   });
 
@@ -70,7 +87,7 @@ async function processSubmission(submission, problem) {
     // Create temporary files for processing
     // const tempDir = path.join(os.tmpdir(), 'online-judge'); //tmpdir->of os..so autoClean by os_itself..
 
-    const tempDir = path.join(process.cwd(), 'temp');
+    const tempDir = path.resolve(process.cwd(), 'temp'); //not join, to avoid issue accross OSes
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir);
     }
@@ -81,7 +98,7 @@ async function processSubmission(submission, problem) {
     // const inputFile = path.join(tempDir, `${uniqueId}_input.txt`);
     // const outputFile = path.join(tempDir, `${uniqueId}_output.txt`);
     
-    const sourceFile = path.resolve(tempDir, `${uniqueId}.${submission.language}`);
+    // const sourceFile = path.resolve(tempDir, `${uniqueId}.${submission.language}`);
     const inputFile = path.resolve(tempDir, `${uniqueId}_input.txt`);
     const outputFile = path.resolve(tempDir, `${uniqueId}_output.txt`);
 
@@ -90,9 +107,12 @@ async function processSubmission(submission, problem) {
     // Write source code to file
     // fs.writeFileSync(sourceFile, submission.sourceCode);
 
-    console.log("Saving to sourceFile:", sourceFile);
-    fs.writeFileSync(sourceFile, submission.sourceCode);
-    console.log("File saved. Exists?", fs.existsSync(sourceFile));  // Check before compile
+    const sourceFile = submission.filePath;
+    // console.log("Saving to sourceFile:", sourceFile);
+    // fs.writeFileSync(sourceFile, submission.sourceCode);
+    // console.log("File saved. Exists?", fs.existsSync(sourceFile));  // Check before compile
+
+    
 
 
     // Process each test case
@@ -106,14 +126,19 @@ async function processSubmission(submission, problem) {
 
       // Execute code with timeout
       // This step runs as a promise using `spawn()`
-      const { stdout, stderr, code } = await executeCode(
-        submission.language,
-        sourceFile,
-        inputFile,
-        outputFile,
-        problem.timeLimit * 1000, // convert to ms
-        problem.memoryLimit * 1024 // convert to KB
-      );
+      // const { stdout, stderr, code } = await executeCode(
+      //   submission.language,
+      //   sourceFile,
+      //   inputFile,
+      //   outputFile,
+      //   problem.timeLimit * 1000, // convert to ms
+      //   problem.memoryLimit * 1024 // convert to KB
+      // );
+
+      // const result = await executeCode(language, sourceFile, inputFile, outputFile, 3000, 128);
+      // const output = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : '';
+      const result = await executeCode(submission.language, sourceFile, inputFile, outputFile, problem.timeLimit*1000,problem.memoryLimit*1024);
+      const {stdout, stderr, code}=result;
 
       // Check results
       if (code !== 0) {
@@ -125,7 +150,9 @@ async function processSubmission(submission, problem) {
       //So **yes, it starts from top of file**, not from where last left off.
       // file is guaranteed to have only the **latest output**, not previous ones.
       const userOutput = fs.readFileSync(outputFile, 'utf-8').trim();
-      if (userOutput === testCase.output.trim()) {
+      const passed = compareTestCase(testCase.output, userOutput);
+      // if (userOutput === testCase.output.trim()) {
+      if(passed){
         passedCases++;
       } else {
         submission.verdict = 'WA';
@@ -143,10 +170,10 @@ async function processSubmission(submission, problem) {
     }
 
     // Clean up files
-    // [sourceFile, inputFile, outputFile].forEach(file => {
-    //   console.log(file);
-    //   if (fs.existsSync(file)) fs.unlinkSync(file);
-    // });
+    [inputFile, outputFile].forEach(file => {
+      console.log(file);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    });
 
     // const tempFiles = [sourceFile, inputFile, outputFile];
     // tempFiles.forEach((file) => {
@@ -262,82 +289,82 @@ async function processSubmission(submission, problem) {
 // }
 
 
-function executeCode(language, sourceFile, inputFile, outputFile, timeLimit, memoryLimit) {
-  return new Promise((resolve) => {
-    const ext = path.extname(sourceFile);
+// function executeCode(language, sourceFile, inputFile, outputFile, timeLimit, memoryLimit) {
+//   return new Promise((resolve) => {
+//     const ext = path.extname(sourceFile);
 
-    const outputExt = process.platform === 'win32' ? '.exe' : '.out';
-    const exeFile = sourceFile.replace(ext, outputExt);
+//     const outputExt = process.platform === 'win32' ? '.exe' : '.out';
+//     const exeFile = sourceFile.replace(ext, outputExt);
 
-    let compileCmd = null;
-    if (language === 'cpp') {
-      // Compilation step
-      compileCmd = spawn('g++', [sourceFile, '-o', exeFile], {
-        shell: true
-      });
+//     let compileCmd = null;
+//     if (language === 'cpp') {
+//       // Compilation step
+//       compileCmd = spawn('g++', [sourceFile, '-o', exeFile], {
+//         shell: true
+//       });
 
-      compileCmd.on('close', (code) => {
-        if (code !== 0) {
-          return resolve({
-            stdout: '',
-            stderr: `Compilation failed with code ${code}`,
-            code: 1,
-          });
-        }
+//       compileCmd.on('close', (code) => {
+//         if (code !== 0) {
+//           return resolve({
+//             stdout: '',
+//             stderr: `Compilation failed with code ${code}`,
+//             code: 1,
+//           });
+//         }
 
-        // Execution step
-        const runCmd = process.platform === 'win32' ? exeFile : `./${path.basename(exeFile)}`;
-        runExecutable(runCmd, inputFile, outputFile, timeLimit, resolve);
-      });
-    } else if (language === 'python') {
-      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      runExecutable(pythonCmd, inputFile, outputFile, timeLimit, resolve, [sourceFile]); //python3->linux
-    } else if (language === 'javascript') {
-      runExecutable('node', inputFile, outputFile, timeLimit, resolve, [sourceFile]);
-    } 
-    //also java->javac Main.java && then java Main..to compile & run..
-    else {
-      return resolve({ stdout: '', stderr: 'Unsupported language', code: 1 });
-    }
-  });
-}
+//         // Execution step
+//         const runCmd = process.platform === 'win32' ? exeFile : `./${path.basename(exeFile)}`;
+//         runExecutable(runCmd, inputFile, outputFile, timeLimit, resolve);
+//       });
+//     } else if (language === 'python') {
+//       const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+//       runExecutable(pythonCmd, inputFile, outputFile, timeLimit, resolve, [sourceFile]); //python3->linux
+//     } else if (language === 'javascript') {
+//       runExecutable('node', inputFile, outputFile, timeLimit, resolve, [sourceFile]);
+//     } 
+//     //also java->javac Main.java && then java Main..to compile & run..
+//     else {
+//       return resolve({ stdout: '', stderr: 'Unsupported language', code: 1 });
+//     }
+//   });
+// }
 
-function runExecutable(cmd, inputFile, outputFile, timeLimit, resolve, args = []) {
-  const process = spawn(cmd, args, {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    shell: false
-  });
+// function runExecutable(cmd, inputFile, outputFile, timeLimit, resolve, args = []) {
+//   const process = spawn(cmd, args, {
+//     stdio: ['pipe', 'pipe', 'pipe'],
+//     shell: false
+//   });
 
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    process.kill();
-  }, timeLimit);
+//   let timedOut = false;
+//   const timeout = setTimeout(() => {
+//     timedOut = true;
+//     process.kill();
+//   }, timeLimit);
 
-  const input = fs.readFileSync(inputFile);
-  process.stdin.write(input);
-  process.stdin.end();
+//   const input = fs.readFileSync(inputFile);
+//   process.stdin.write(input);
+//   process.stdin.end();
 
-  let stdout = '';
-  let stderr = '';
+//   let stdout = '';
+//   let stderr = '';
 
-  process.stdout.on('data', (data) => {
-    stdout += data.toString();
-  });
+//   process.stdout.on('data', (data) => {
+//     stdout += data.toString();
+//   });
 
-  process.stderr.on('data', (data) => {
-    stderr += data.toString();
-  });
+//   process.stderr.on('data', (data) => {
+//     stderr += data.toString();
+//   });
 
-  process.on('close', (code) => {
-    clearTimeout(timeout);
-    if (timedOut) {
-      return resolve({ stdout: '', stderr: 'Time Limit Exceeded', code: -1 });
-    }
-    fs.writeFileSync(outputFile, stdout);
-    resolve({ stdout, stderr, code });
-  });
-}
+//   process.on('close', (code) => {
+//     clearTimeout(timeout);
+//     if (timedOut) {
+//       return resolve({ stdout: '', stderr: 'Time Limit Exceeded', code: -1 });
+//     }
+//     fs.writeFileSync(outputFile, stdout);
+//     resolve({ stdout, stderr, code });
+//   });
+// }
 
 
 function getVerdictFromError(code) {
@@ -492,3 +519,183 @@ exports.getUserSubmissions = catchAsyncErrors(async (req, res, next) => {
     data: submissions
   });
 });
+
+
+
+function normalizeOutput(outputStr) {
+  // Remove carriage returns, trim and normalize whitespace
+  const cleanStr = outputStr.replace(/\r/g, '').trim();
+
+  // Try JSON.parse: handles array, object, string, number, boolean
+  try {
+    return JSON.parse(cleanStr);
+  } catch (err) {
+    // If not JSON parsable, fallback to tokenizing string by space/newline
+    const tokens = cleanStr
+      .split(/\s+/)
+      .map(token => {
+        if (!isNaN(token)) return Number(token); // number
+        if (token === 'true') return true;
+        if (token === 'false') return false;
+        return token; // raw string
+      });
+    return tokens.length === 1 ? tokens[0] : tokens;
+  }
+}
+
+function deepEqual(a, b) {
+  if (typeof a !== typeof b) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((val, idx) => deepEqual(val, b[idx]));
+  }
+
+  if (typeof a === 'object' && a && b) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    return aKeys.every(key => deepEqual(a[key], b[key]));
+  }
+
+  return a === b;
+}
+
+// === ✅ Final Compare Function ===
+function compareTestCase(expectedStr, rawOutput) {
+  let expected, output;
+
+  try {
+    expected = normalizeOutput(expectedStr);
+  } catch (e) {
+    console.error("Invalid expected JSON string:", expectedStr);
+    return false;
+  }
+
+  try {
+    output = normalizeOutput(rawOutput);
+  } catch (e) {
+    console.error("Invalid output format:", rawOutput);
+    return false;
+  }
+
+  return deepEqual(output, expected);
+}
+
+
+
+// exports.runSampleTest = async (req, res) => {
+  exports.runSampleTest = async (req, res,next) => { //without it..return next(new Errohanlder..fails)
+  try {
+    // const { language, problemId, input: customInput, sourceCode } = req.body;
+
+    // const allowedExtensions = {
+    //   cpp: '.cpp',
+    //   c: '.c',
+    //   python: '.py',
+    //   java: '.java'
+    // };
+
+  const { language, customInput, problemId,sourceCode} = req.body;
+  // const tempDir = path.join(__dirname, '../temp');
+
+  const problem = await Problem.findById(problemId);
+  if (!problem) return res.status(404).json({ error: 'Problem not found' });
+
+  let sourceFilePath = null;
+  const tempDir = path.resolve(process.cwd(), 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+  if (req.files?.['sourceCode']?.[0]) {
+    sourceFilePath = req.files['sourceCode'][0].path;
+  } else if (sourceCode) {
+    // Write to file and save its path
+    const fileName = `${uuidv4()}.${language}`;
+    sourceFilePath = path.resolve(tempDir, fileName);
+    fs.writeFileSync(sourceFilePath, sourceCode);
+  } else {
+    return next(new ErrorHandler('No code submitted', 400));
+  }
+
+     // 1. If CUSTOM input is provided
+  if (customInput) {
+    const uniqueId = uuidv4();
+    const inputFile = path.resolve(tempDir, `${uniqueId}_input.txt`);
+    const outputFile = path.resolve(tempDir, `${uniqueId}_output.txt`);
+    fs.writeFileSync(inputFile, customInput);
+
+    const result = await executeCode(language, sourceFilePath, inputFile, outputFile, 3000, 128);
+    const output = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : '';
+
+    [sourceFilePath,inputFile, outputFile].forEach(file => fs.existsSync(file) && fs.unlinkSync(file));
+
+    return res.status(200).json({
+      message: 'Custom input run completed',
+      output,
+      ...result,
+    });
+  }
+
+  // 2. Else use all SAMPLE test cases
+  const sampleCases = problem.testCases.filter(tc => tc.isSample);
+
+  const results = [];
+
+  for (const [index, testCase] of sampleCases.entries()) {
+    const uniqueId = uuidv4();
+    const inputFile = path.resolve(tempDir, `${uniqueId}_input.txt`);
+    const outputFile = path.resolve(tempDir, `${uniqueId}_output.txt`);
+    fs.writeFileSync(inputFile, testCase.input);
+
+    const result = await executeCode(language, sourceFilePath, inputFile, outputFile, 3000, 128);
+    const output = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : '';
+    const expected = testCase.output;
+
+    // 🔁 Inside the loop:
+    [inputFile, outputFile].forEach(file => fs.existsSync(file) && fs.unlinkSync(file));
+
+     // Normalize both strings: trim + remove extra spaces + consistent line endings
+      // const normalize = str => str.trim().replace(/^"|"$/g, ''); // remove surrounding quotes
+      // const passed= output === normalize(expected);
+    const passed = compareTestCase(expected, output);
+    // console.log("Passed?", passed);
+
+    results.push({
+      case: index + 1,
+      input: testCase.input,
+      expected,
+      output,
+      passed,
+      ...result,
+    });
+
+    if(!passed) break;
+  }
+
+  //after the loop: only save file uploaded, or code when submitted..not when testRun
+  if (fs.existsSync(sourceFilePath)) fs.unlinkSync(sourceFilePath);
+
+   res.status(200).json({
+    message: 'Sample test cases executed',
+    testResults: results,
+  });
+  } catch (err) {
+    res.status(500).json({ error: 'Sample execution failed', details: err.message });
+  }
+};
+
+
+exports.downloadSourceCode = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const submission = await Submission.findById(id);
+    if (!submission || !submission.filePath) {
+      return res.status(404).json({ error: 'Submission or file not found' });
+    }
+
+    return res.download(submission.filePath);
+  } catch (err) {
+    res.status(500).json({ error: 'Download failed', details: err.message });
+  }
+};

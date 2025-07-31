@@ -22,7 +22,9 @@ const submissionSchema = new mongoose.Schema({
     enum: ['cpp', 'java', 'python', 'javascript'],
     required: true
   },
-  sourceCode: { type: String, required: true },
+  // sourceCode: { type: String, required: true }, //as sourceCode-file can also be provided
+  sourceCode: { type: String},
+  filePath: {type: String},
   verdict: {
     type: String,
     enum: [
