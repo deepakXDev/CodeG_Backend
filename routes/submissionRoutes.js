@@ -20,7 +20,8 @@ const router = express.Router();
 
 // Validation middleware
 const validateSubmission = [
-  body('problemSlug').notEmpty().withMessage('Problem slug is required'),
+  // body('problemSlug').notEmpty().withMessage('Problem slug is required'),
+  body('problemId').notEmpty().withMessage('ProblemId is required'),  
   body('language').isIn(['cpp', 'java', 'python', 'javascript']).withMessage('Invalid language'),
   // body('sourceCode').notEmpty().withMessage('Source code is required'), //as also fileUpload option
   

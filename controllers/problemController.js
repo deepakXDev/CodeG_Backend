@@ -42,6 +42,60 @@ exports.getProblems = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
+
+// // By ID
+// exports.getProblemById = async (req, res) => {
+//   try {
+//     const problem = await Problem.findById(req.params.id);
+//     if (!problem) return res.status(404).json({ error: "Problem not found" });
+//     res.json(problem);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+
+
+exports.getProblemById = catchAsyncErrors(async (req, res, next) => {
+  const { id } = req.params;
+  const userId = req.user?._id;
+
+  const problem = await Problem.findById(id)
+    .populate("createdBy", "username")
+    .lean();
+
+  if (!problem) {
+    return next(new ErrorHandler("Problem not found", 404));
+  }
+
+  // Filter test cases
+  if (!userId) {
+    problem.testCases = problem.testCases.filter(tc => tc.isSample);
+  } else if (userId.toString() !== problem.createdBy._id.toString()) {
+    problem.testCases = problem.testCases.filter(
+      tc => tc.isSample || !tc.isHidden
+    );
+  }
+
+  // Add submission status if authenticated
+  if (userId) {
+    const submission = await Submission.findOne({
+      userId,
+      problemId: problem._id,
+      verdict: "AC"
+    }).sort({ createdAt: -1 });
+
+    if (submission) {
+      problem.isSolved = true;
+      problem.lastSubmission = submission.createdAt;
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: problem,
+  });
+});
+
 /**
  * @description Get single problem by slug
  * @route GET /api/problems/:slug

@@ -3,7 +3,8 @@ const {
   getProblems,
   getProblemBySlug,
   createProblem,
-  updateProblem
+  updateProblem,
+  getProblemById
 } = require("../controllers/problemController");
 const { isAuthenticated, requireRole, isAdmin } = require("../middlewares/authMiddleware");
 // const { body } = require("express-validator");
@@ -36,7 +37,9 @@ const validateProblemCreation = [
 
 // Public routes
 router.get("/", getProblems);
-router.get("/:slug", getProblemBySlug);
+router.get("/id/:id", getProblemById);     // fetch by MongoId
+router.get("/:slug", getProblemBySlug);    // fetch by slug
+
 
 // Admin routes
 router.post(
@@ -46,6 +49,8 @@ router.post(
   validateProblemCreation,
   createProblem
 );
+
+
 
 router.put(
   "/:slug",

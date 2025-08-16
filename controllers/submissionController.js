@@ -17,16 +17,17 @@ const executeCode=require("../utils/codeRunner");
  * @access Private
  */
 exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
-  const { problemSlug, language, sourceCode } = req.body;
+  const { problemSlug, language, sourceCode, problemId } = req.body;
   const userId = req.user._id;
 
   // Validate input
-  if (!problemSlug || !language) {
+  if (!problemId || !language) {
     return next(new ErrorHandler('Missing required fields', 400));
   }
 
   // Find problem
-  const problem = await Problem.findOne({ slug: problemSlug });
+  // const problem = await Problem.findOne({ slug: problemSlug });
+  const problem = await Problem.findById(problemId);
   if (!problem) {
     return next(new ErrorHandler('Problem not found', 404));
   }

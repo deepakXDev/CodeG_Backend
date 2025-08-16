@@ -101,9 +101,10 @@ exports.register=catchAsyncErrors(async (req, res, next) => {
 exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {
 const { otp } = req.body;
 const email = req.cookies.email || req.body.email;
+console.log(`${otp}:${email}`);
 const registrationSessionId = req.cookies.reg_session || req.body.registrationSessionId;
 
-
+console.log(`${registrationSessionId}`);
   if (!email || !otp || !registrationSessionId) {
     return next(new ErrorHandler("Required fields are missing.", 400));
   }

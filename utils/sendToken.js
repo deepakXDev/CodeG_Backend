@@ -11,5 +11,6 @@ exports.sendToken=(user,statusCode, message, res)=>{
         success:true,
         user,
         message,
+        accessToken: token,
     })
 }

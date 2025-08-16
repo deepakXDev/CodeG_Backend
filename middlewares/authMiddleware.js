@@ -7,8 +7,12 @@ const jwt = require("jsonwebtoken");
 
 exports.isAuthenticated=catchAsyncErrors(async(req,res,next)=>{
     const {token}=req.cookies; 
-    if(!token) return next(new ErrorHandler("User is not authenticated.",400));
-    const decoded=jwt.verify(token,process.env.JWT_SECRET_KEY);
+    const authHeader = req.headers.authorization;
+    if(!token && !authHeader) return next(new ErrorHandler("User is not authenticated.",400));
+    let decoded=null;
+    if(!authHeader) {decoded=jwt.verify(token,process.env.JWT_SECRET_KEY);}
+    else if(!token){decoded=jwt.verify(authHeader,process.env.JWT_SECRET_KEY);}
+  
     req.user=await User.findById(decoded.id); 
     next(); 
 }) 
