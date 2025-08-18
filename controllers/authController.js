@@ -12,7 +12,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // export const register = catchAsyncErrors(async (req, res, next) => {
 exports.register=catchAsyncErrors(async (req, res, next) => {
-  try {
+  // try {
     const { name, email, password, role } = req.body;
     if (!name || !email || !password || !role) {
       return next(new ErrorHandler("Please enter all fields.", 400));
@@ -90,12 +90,28 @@ exports.register=catchAsyncErrors(async (req, res, next) => {
       });
 
       const verificationCode = newUser.generateVerificationCode();
-      await newUser.save();
-      sendVerificationCode(verificationCode, email, res, registrationSessionId);
+      // await newUser.save();
+      // sendVerificationCode(verificationCode, email, res, registrationSessionId);
+      
+    newUser.accountVerified = true;
+    newUser.verificationCode = null;
+    newUser.verificationCodeExpire = null;
+    newUser.isPwdAuth = true;
+    newUser.registrationSessionId = null; // Clear after use
+
+    if (newUser.tempPassword) {
+      newUser.password = newUser.tempPassword;
+      newUser.tempPassword = null;
+      newUser.pwdSetupAttempts = { count: 0, lastAttempt: null };
     }
-  } catch (error) {
-    next(error);
-  }
+    await newUser.save({ validateModifiedOnly: true });
+    res.clearCookie("email");
+    sendToken(newUser, 200, "Account Verified.", res);
+    console.log(newUser);
+    }
+  // } catch (error) {
+  //   next(error);
+  // }
 });
 
 exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {
@@ -149,7 +165,7 @@ console.log(`${registrationSessionId}`);
 exports.login = catchAsyncErrors(async (req, res, next) => {
   const { email, password, role } = req.body;
   
-  if (!email || !password || !role) {
+  if (!email || !password) {
     return next(new ErrorHandler("Please enter all fields.", 400));
   }
 
@@ -157,7 +173,7 @@ exports.login = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findOne({ 
     email, 
     accountVerified: true,
-    role 
+    // role 
   }).select("+password");
 
   
@@ -267,6 +283,7 @@ exports.logout = catchAsyncErrors(async (req, res, next) => {
 
 exports.getUser = catchAsyncErrors(async (req, res, next) => {
   const user = req.user; //full detail of user,from authMiddleware (findById(decoded_id));
+  console.log(user);
   res.status(200).json({
     success: true,
     user,

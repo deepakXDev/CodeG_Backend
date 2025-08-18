@@ -17,7 +17,7 @@ const executeCode=require("../utils/codeRunner");
  * @access Private
  */
 exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
-  const { problemSlug, language, sourceCode, problemId } = req.body;
+  const {language, sourceCode, problemId } = req.body;
   const userId = req.user._id;
 
   // Validate input
@@ -54,7 +54,7 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
     language,
     sourceCode: sourceCode || '', // still store raw text for UI view
     filePath: sourceFilePath,
-    verdict: 'PENDING'
+    verdict: 'Pending'
   });
 
   // Immediately respond with submission ID
@@ -68,7 +68,7 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
     .catch(err => {
       console.error('Submission processing error:', err);
       // Update submission with error status
-      submission.verdict = 'SE';
+      submission.verdict = 'System Error';
       submission.errorMessage = 'System error during processing';
       submission.save();
     });
@@ -156,7 +156,7 @@ async function processSubmission(submission, problem) {
       if(passed){
         passedCases++;
       } else {
-        submission.verdict = 'WA';
+        submission.verdict = 'Wrong Answer';
         break;
       }
 
@@ -188,8 +188,8 @@ async function processSubmission(submission, problem) {
     // Update submission
     submission.testCasesPassed = passedCases;
     submission.totalTestCases = totalCases;
-    if (submission.verdict === 'PENDING') {
-      submission.verdict = passedCases === totalCases ? 'AC' : 'WA';
+    if (submission.verdict === 'Pending') {
+      submission.verdict = passedCases === totalCases ? 'Accepted' : 'Wrong Answer';
     }
 
     await submission.save({ session });
@@ -371,13 +371,14 @@ async function processSubmission(submission, problem) {
 function getVerdictFromError(code) {
   switch (code) {
     case 137: // SIGKILL (memory limit)
-      return 'MLE';
+      // return 'MLE';
+      return 'Memory Limit Exceeded'
     case 124: // Timeout
-      return 'TLE';
+      return 'Time Limit Exceeded';
     case 1:   // Runtime error
-      return 'RE';
+      return 'Runtime Error';
     default:
-      return 'SE'; // System error
+      return 'System Error'; // System error
   }
 }
 
@@ -517,7 +518,8 @@ exports.getUserSubmissions = catchAsyncErrors(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    data: submissions
+    // data: submissions
+    data: {submissions} // Ensure frontend can read: data.data.submissions
   });
 });
 
@@ -597,11 +599,12 @@ function compareTestCase(expectedStr, rawOutput) {
     //   java: '.java'
     // };
 
-  const { language, customInput, problemId,sourceCode} = req.body;
+  // const { language, customInput, problemId,sourceCode} = req.body;
+  const { language, customInput,sourceCode} = req.body;
   // const tempDir = path.join(__dirname, '../temp');
 
-  const problem = await Problem.findById(problemId);
-  if (!problem) return res.status(404).json({ error: 'Problem not found' });
+  // const problem = await Problem.findById(problemId);
+  // if (!problem) return res.status(404).json({ error: 'Problem not found' });
 
   let sourceFilePath = null;
   const tempDir = path.resolve(process.cwd(), 'temp');

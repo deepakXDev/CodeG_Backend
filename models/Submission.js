@@ -27,17 +27,19 @@ const submissionSchema = new mongoose.Schema({
   filePath: {type: String},
   verdict: {
     type: String,
-    enum: [
-      'AC',     // Accepted
-      'WA',     // Wrong Answer
-      'TLE',    // Time Limit Exceeded
-      'MLE',    // Memory Limit Exceeded
-      'RE',     // Runtime Error
-      'CE',     // Compilation Error
-      'SE',     // System Error
-      'PENDING' // Processing
-    ],
-    default: 'PENDING'
+    // enum: [
+    //   'AC',     // Accepted
+    //   'WA',     // Wrong Answer
+    //   'TLE',    // Time Limit Exceeded
+    //   'MLE',    // Memory Limit Exceeded
+    //   'RE',     // Runtime Error
+    //   'CE',     // Compilation Error
+    //   'SE',     // System Error
+    //   'PENDING' // Processing
+    // ],
+    enum:['Accepted','Wrong Answer', 'Time Limit Exceeded', 
+      'Memory Limit Exceeded', 'Runtime Error', 'Compilation Error','Pending','System Error'],
+    default: 'Pending'
   },
   runtimeMs: { type: Number, min: 0 },
   memoryKb: { type: Number, min: 0 },

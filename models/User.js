@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     googleId: { type: String },
     role: { 
         type: String, 
-        enum: ['User','Admin'],
+        enum: ['User','Admin', 'Problem_Setter'],
         default: 'User'
     }, 
     // Verification fields

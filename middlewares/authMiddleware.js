@@ -39,6 +39,7 @@ exports.requireRole = (...allowedRoles) => {
 // export const isAdmin = requireRole('Admin');
 
 exports.isAdmin = exports.requireRole('Admin'); //as requireRole not define (as directly exported);
+exports.isAdminOrProblem_Setter = exports.requireRole('Problem_Setter','Admin');
 // //M2:
 // exports.requireRole = requireRole;
 // exports.isAdmin = requireRole('Admin');

@@ -10,19 +10,19 @@ const testCaseSchema = new mongoose.Schema({
 }, { _id: true });
 
 const problemSchema = new mongoose.Schema({
-  slug: { 
-    type: String, 
-    required: true, 
-    unique: true, // // ⚠️ This implicitly creates an index on "slug"
-    validate: {
-      validator: (v) => /^[a-z0-9-]+$/.test(v),
-      message: "Slug must be lowercase alphanumeric with hyphens"
-    }
-  },
+  // slug: { 
+  //   type: String, 
+  //   required: true, 
+  //   unique: true, // // ⚠️ This implicitly creates an index on "slug"
+  //   validate: {
+  //     validator: (v) => /^[a-z0-9-]+$/.test(v),
+  //     message: "Slug must be lowercase alphanumeric with hyphens"
+  //   }
+  // },
   title: { type: String, required: true, trim: true },
   difficulty: { 
     type: String, 
-    enum: ['easy', 'medium', 'hard'], 
+    enum: ['Easy', 'Medium', 'Hard'], 
     required: true 
   },
   tags: { 
@@ -37,9 +37,9 @@ const problemSchema = new mongoose.Schema({
   timeLimit: { // in seconds
     type: Number, 
     required: true,
-    min: 0.5,
-    max: 10,
-    default: 1
+    min: 500,
+    max: 10000, //in ms
+    default: 1000
   },
   memoryLimit: { // in MB
     type: Number,
@@ -59,7 +59,7 @@ const problemSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-// problemSchema.index({ slug: 1 });
+problemSchema.index({ title: 1 });
 problemSchema.index({ difficulty: 1 });
 problemSchema.index({ tags: 1 });
 problemSchema.index({ createdAt: -1 });

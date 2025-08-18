@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
  * @access Public
  */
 exports.getProblems = catchAsyncErrors(async (req, res, next) => {
-  const { page = 1, limit = 20, difficulty, tags, search } = req.query;
+  const { page = 1, limit = 10, difficulty, tags, search } = req.query;
   
   // Build query
   const query = {};
@@ -28,17 +28,18 @@ exports.getProblems = catchAsyncErrors(async (req, res, next) => {
     limit: parseInt(limit),
     sort: { createdAt: -1 },
     select: '-descriptionMarkdown -testCases -constraints',
-    populate: [
-      { path: 'submissionCount', select: 'count' },
-      { path: 'acceptedCount', select: 'count' }
-    ]
+    populate: { path: 'createdBy', select: 'name' }
+    // populate: [
+    //   { path: 'submissionCount', select: 'count' },
+    //   { path: 'acceptedCount', select: 'count' }
+    // ]
   };
 
   const problems = await Problem.paginate(query, options);
 
   res.status(200).json({
     success: true,
-    data: problems
+    data: problems //// includes docs, totalPages, etc.
   });
 });
 
@@ -147,16 +148,17 @@ exports.getProblemBySlug = catchAsyncErrors(async (req, res, next) => {
  * @access Private/Admin
  */
 exports.createProblem = catchAsyncErrors(async (req, res, next) => {
-  const { title, slug, ...rest } = req.body;
+  const { title, ...rest } = req.body;
   const userId = req.user._id;
 
   // Check if slug already exists
-  const existingProblem = await Problem.findOne({ slug });
+  const existingProblem = await Problem.findOne({ title });
   if (existingProblem) {
-    return next(new ErrorHandler('Problem with this slug already exists', 400));
+    return next(new ErrorHandler('Problem with this title already exists', 400));
   }
 
   // Validate test cases
+  console.log(rest.testCases);
   if (!rest.testCases || rest.testCases.length < 2) {
     return next(new ErrorHandler('At least 2 test cases are required', 400));
   }
@@ -169,7 +171,7 @@ exports.createProblem = catchAsyncErrors(async (req, res, next) => {
 
   const problem = await Problem.create({
     title,
-    slug,
+    // slug,
     ...rest,
     createdBy: userId
   });
