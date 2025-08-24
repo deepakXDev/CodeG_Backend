@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require("uuid");
 const os = require("os");
 const executeCode = require("../utils/codeRunner");
 const axios = require('axios');
-
+const compilerURL = process.env.COMPILER_URL;
 /**
  * @description Submit solution for a problem
  * @route POST /api/submit
@@ -84,7 +84,8 @@ if (!codeToSend && submission.filePath && fs.existsSync(submission.filePath)) {
   codeToSend = fs.readFileSync(submission.filePath, "utf-8");
 }
     // Call compiler service
-    const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
+    // const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
+    const compilerResponse=await axios.post(`${compilerURL}/process-submission`,{
       language: submission.language,
       sourceCode: codeToSend,
       testCases: problem.testCases,
