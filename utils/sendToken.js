@@ -6,6 +6,8 @@ exports.sendToken=(user,statusCode, message, res)=>{
         expires: new Date(
             Date.now()+process.env.COOKIE_EXPIRE*24*60*60*1000),//for 24Hrs*3==>3days
         httpOnly:true,
+        sameSite: "None", // allow cross-site cookies
+         secure: true       // required when sameSite=None (only over HTTPS)    
     })
     .json({
         success:true,
