@@ -10,6 +10,7 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const os = require("os");
 const executeCode = require("../utils/codeRunner");
+const axios = require('axios');
 
 /**
  * @description Submit solution for a problem
@@ -53,19 +54,75 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
     verdict: "Pending",
   });
 
+//   if (!submission.sourceCode) {
+//   throw new Error("Submission missing source code");
+// }
+
   res.status(202).json({
     success: true,
     submissionId: submission._id,
   });
 
-  processSubmission(submission, problem).catch((err) => {
-    console.error("Submission processing error:", err);
+  // processSubmission(submission, problem).catch((err) => {
+  //   console.error("Submission processing error:", err);
 
-    submission.verdict = "System Error";
-    submission.errorMessage = "System error during processing";
-    submission.save();
-  });
+  //   submission.verdict = "System Error";
+  //   submission.errorMessage = "System error during processing";
+  //   submission.save();
+  // });
+  
+    // Send to compiler service asynchronously
+    sendToCompilerService(submission, problem);
 });
+
+async function sendToCompilerService(submission, problem) {
+  try {
+    let codeToSend = submission.sourceCode;
+
+// If sourceCode is empty (uploaded file case), read from filePath
+if (!codeToSend && submission.filePath && fs.existsSync(submission.filePath)) {
+  codeToSend = fs.readFileSync(submission.filePath, "utf-8");
+}
+    // Call compiler service
+    const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
+      language: submission.language,
+      sourceCode: codeToSend,
+      testCases: problem.testCases,
+      timeLimit: problem.timeLimit,
+      memoryLimit: problem.memoryLimit
+    });
+
+    const { results, verdict } = compilerResponse.data;
+
+    // Update submission in DB
+    submission.verdict = verdict;
+    submission.testCasesPassed = results.filter(r => r.passed).length;
+    submission.totalTestCases = results.length;
+    submission.resultDetails = results; // optional, store full results for UI
+    await submission.save();
+
+    // Update user stats
+    await updateUserStats(submission);
+
+  } 
+  // catch (err) {
+  //   console.error('Compiler service error:', err.message);
+  //   submission.verdict = 'System Error';
+  //   submission.errorMessage = err.message;
+  //   await submission.save();
+  // }
+  catch (err) {
+  console.error('Compiler service error FULL:', err);  // logs the whole error object
+  console.error('STACK:', err.stack);                  // shows call stack
+  console.error('NAME:', err.name);                    // error type
+  console.error('MESSAGE:', err.message);              // short message
+
+  submission.verdict = 'System Error';
+  submission.errorMessage = err.stack || err.message;  // save stack trace for debugging
+  await submission.save();
+}
+}
+
 
 async function processSubmission(submission, problem) {
   const session = await mongoose.startSession();
@@ -155,7 +212,7 @@ function getVerdictFromError(code) {
   }
 }
 
-async function updateUserStats(submission, session) {
+async function updateUserStats(submission, session=null) {
   const userId = submission.userId;
   const problemId = submission.problemId;
   const verdict = submission.verdict;

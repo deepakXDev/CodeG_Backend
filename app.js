@@ -15,7 +15,7 @@ const app = express();
 module.exports = app;
 
 const corsOptions = {
-  origin: "http://localhost:5173", 
+  origin: ["http://localhost:5173", "https://code-g-frontend-nine.vercel.app"],
   methods: ["GET", "POST", "PUT", "DELETE"], 
   credentials: true,
 };
