@@ -95,23 +95,75 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
     });
 
     const verificationCode = newUser.generateVerificationCode();
+    await newUser.save();
+    sendVerificationCode(verificationCode, email, res, registrationSessionId);
 
-    newUser.accountVerified = true;
-    newUser.verificationCode = null;
-    newUser.verificationCodeExpire = null;
-    newUser.isPwdAuth = true;
-    newUser.registrationSessionId = null; // Clear after use
+    // newUser.accountVerified = true;
+    // newUser.verificationCode = null;
+    // newUser.verificationCodeExpire = null;
+    // newUser.isPwdAuth = true;
+    // newUser.registrationSessionId = null; // Clear after use
 
-    if (newUser.tempPassword) {
-      newUser.password = newUser.tempPassword;
-      newUser.tempPassword = null;
-      newUser.pwdSetupAttempts = { count: 0, lastAttempt: null };
-    }
-    await newUser.save({ validateModifiedOnly: true });
-    res.clearCookie("email");
-    sendToken(newUser, 200, "Account Verified.", res);
-    console.log(newUser);
+    // if (newUser.tempPassword) {
+    //   newUser.password = newUser.tempPassword;
+    //   newUser.tempPassword = null;
+    //   newUser.pwdSetupAttempts = { count: 0, lastAttempt: null };
+    // }
+    // await newUser.save({ validateModifiedOnly: true });
+    // res.clearCookie("email");
+    // sendToken(newUser, 200, "Account Verified.", res);
+    // console.log(newUser);
   }
+});
+
+exports.resendOtp = catchAsyncErrors(async (req, res, next) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return next(new ErrorHandler("Email is required.", 400));
+    }
+
+    const user = await User.findOne({ email });
+
+    // Important security check: Only allow resend for unverified accounts.
+    if (!user || user.accountVerified) {
+        // Send a generic success message even if the user doesn't exist or is verified.
+        // This prevents attackers from guessing which emails are registered.
+        return res.status(200).json({
+            success: true,
+            message: "If an account with that email exists, a new OTP has been sent.",
+        });
+    }
+
+    const now = new Date();
+    const lastAttempt = user.pwdSetupAttempts?.lastAttempt || new Date(0);
+    const diffHours = (now - lastAttempt) / (1000 * 60 * 60);
+
+    // Rate Limiting: Prevent spamming the resend functionality.
+    if (diffHours < 24 && (user.pwdSetupAttempts?.count || 0) >= 10) {
+        return next(
+            new ErrorHandler(
+                "You have made too many attempts. Please try again after 24 hours.",
+                429 // HTTP 429: Too Many Requests
+            )
+        );
+    }
+
+    // Update attempt count and timestamp
+    user.pwdSetupAttempts = {
+        count: diffHours < 24 ? (user.pwdSetupAttempts?.count || 0) + 1 : 1,
+        lastAttempt: now,
+    };
+
+    // Generate a new verification code and session ID
+    const registrationSessionId = crypto.randomUUID();
+    user.registrationSessionId = registrationSessionId;
+    const verificationCode = user.generateVerificationCode(); // This method should also set the new expiry date
+
+    await user.save();
+
+    // Send the new verification code via email
+    sendVerificationCode(verificationCode, email, res, registrationSessionId);
 });
 
 exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {

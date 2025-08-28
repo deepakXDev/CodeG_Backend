@@ -2,6 +2,8 @@ const express = require("express");
 const {
   getUserProfile,
   getUserActivity,
+  getAuthenticatedUserProfile,
+  updateUserProfile,
 } = require("../controllers/userController");
 const {
   isAuthenticated,
@@ -11,8 +13,13 @@ const {
 
 const router = express.Router();
 
+router.route('/me')
+  .get(isAuthenticated, getAuthenticatedUserProfile)
+  .put(isAuthenticated,updateUserProfile);
+
 // Public profile
-router.get("/:userId/profile", getUserProfile);
+router.get("/:userId/profile", getUserProfile)
+      
 
 // Private activity data
 router.get(

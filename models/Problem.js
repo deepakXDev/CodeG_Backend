@@ -29,7 +29,6 @@ const problemSchema = new mongoose.Schema(
     descriptionMarkdown: { type: String, required: true },
     constraints: { type: [String], default: [] },
     timeLimit: {
-      // in seconds
       type: Number,
       required: true,
       min: 500,
@@ -46,7 +45,7 @@ const problemSchema = new mongoose.Schema(
     },
     isContest: { type: Boolean, default: false },
     testCases: [testCaseSchema],
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required:true },
   },
   {
     timestamps: true,

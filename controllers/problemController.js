@@ -127,6 +127,7 @@ exports.getProblemBySlug = catchAsyncErrors(async (req, res, next) => {
  * @access Private/Admin
  */
 exports.createProblem = catchAsyncErrors(async (req, res, next) => {
+  console.log("RECEIVED PAYLOAD:", JSON.stringify(req.body, null, 2));
   const { title, ...rest } = req.body;
   const userId = req.user._id;
 
@@ -137,7 +138,7 @@ exports.createProblem = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  console.log(rest.testCases);
+  //console.log(rest.testCases);
   if (!rest.testCases || rest.testCases.length < 2) {
     return next(new ErrorHandler("At least 2 test cases are required", 400));
   }
@@ -151,7 +152,6 @@ exports.createProblem = catchAsyncErrors(async (req, res, next) => {
 
   const problem = await Problem.create({
     title,
-
     ...rest,
     createdBy: userId,
   });
@@ -160,6 +160,39 @@ exports.createProblem = catchAsyncErrors(async (req, res, next) => {
     success: true,
     data: problem,
   });
+});
+
+exports.getMyProblems = catchAsyncErrors(async (req, res, next) => {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const userId = req.user._id;
+    console.log("hello");
+    const problems = await Problem.find({ createdBy: userId })
+        .sort({ createdAt: -1 }) // Show newest problems first
+        .skip(skip)
+        .limit(limit)
+        .lean(); // Use .lean() for faster read-only queries
+
+    const totalProblems = await Problem.countDocuments({ createdBy: userId });
+    const totalPages = Math.ceil(totalProblems / limit);
+
+    console.log(problems);
+
+    res.status(200).json({
+        success: true,
+        data: {
+            problems,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalProblems,
+                hasPrev: page > 1,
+                hasNext: page < totalPages,
+            },
+        },
+    });
 });
 
 /**

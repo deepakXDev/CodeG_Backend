@@ -12,11 +12,7 @@ const os = require("os");
 const executeCode = require("../utils/codeRunner");
 const axios = require('axios');
 const compilerURL = process.env.COMPILER_URL;
-/**
- * @description Submit solution for a problem
- * @route POST /api/submit
- * @access Private
- */
+
 exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
   const { language, sourceCode, problemId } = req.body;
   const userId = req.user._id;
@@ -83,46 +79,91 @@ async function sendToCompilerService(submission, problem) {
 if (!codeToSend && submission.filePath && fs.existsSync(submission.filePath)) {
   codeToSend = fs.readFileSync(submission.filePath, "utf-8");
 }
-    // Call compiler service
-    // const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
-    const compilerResponse=await axios.post(`${compilerURL}/process-submission`,{
+
+  const callbackUrl = `${process.env.BACKEND_URL}/submission/${submission._id}/callback`;
+
+  // Fire-and-forget the request to the compiler. (no await)
+    axios.post(`${compilerURL}/process-submission`, {
       language: submission.language,
       sourceCode: codeToSend,
       testCases: problem.testCases,
       timeLimit: problem.timeLimit,
-      memoryLimit: problem.memoryLimit
+      memoryLimit: problem.memoryLimit,
+      callbackUrl: callbackUrl, 
+      secretToken: process.env.COMPILER_SECRET_TOKEN 
     });
-
-    const { results, verdict } = compilerResponse.data;
-
-    // Update submission in DB
-    submission.verdict = verdict;
-    submission.testCasesPassed = results.filter(r => r.passed).length;
-    submission.totalTestCases = results.length;
-    submission.resultDetails = results; // optional, store full results for UI
+  } catch (err) {
+    // This will now only catch errors if the initial axios.post fails to send.
+    console.error('Failed to dispatch job to compiler service:', err.message);
+    submission.verdict = 'System Error';
+    submission.errorMessage = 'Failed to dispatch job to compiler.';
     await submission.save();
+  }
+}
 
-    // Update user stats
-    await updateUserStats(submission);
+exports.compilerCallback= async (req, res, next) => {
+  const { secretToken, results, verdict } = req.body;
+  if (secretToken !== process.env.COMPILER_SECRET_TOKEN) {
+    return next(new ErrorHandler("Unauthorized", 403));
+  }
 
-  } 
-  // catch (err) {
-  //   console.error('Compiler service error:', err.message);
-  //   submission.verdict = 'System Error';
-  //   submission.errorMessage = err.message;
-  //   await submission.save();
-  // }
-  catch (err) {
-  console.error('Compiler service error FULL:', err);  // logs the whole error object
-  console.error('STACK:', err.stack);                  // shows call stack
-  console.error('NAME:', err.name);                    // error type
-  console.error('MESSAGE:', err.message);              // short message
+  const submission = await Submission.findById(req.params.id);
+  if (!submission) {
+    return next(new ErrorHandler("Submission not found", 404));
+  }
 
-  submission.verdict = 'System Error';
-  submission.errorMessage = err.stack || err.message;  // save stack trace for debugging
+  submission.verdict = verdict;
+  submission.testCasesPassed = results.filter(r => r.passed).length;
+  submission.totalTestCases = results.length;
   await submission.save();
+
+  await updateUserStats(submission);
+  
+  res.status(200).json({ success: true, message: "Callback received." });
 }
-}
+
+
+
+    // Call compiler service
+    // const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
+    // const compilerResponse=await axios.post(`${compilerURL}/process-submission`,{
+    //   language: submission.language,
+    //   sourceCode: codeToSend,
+    //   testCases: problem.testCases,
+    //   timeLimit: problem.timeLimit,
+    //   memoryLimit: problem.memoryLimit
+    // });
+
+//     const { results, verdict } = compilerResponse.data;
+
+//     // Update submission in DB
+//     submission.verdict = verdict;
+//     submission.testCasesPassed = results.filter(r => r.passed).length;
+//     submission.totalTestCases = results.length;
+//     submission.resultDetails = results; // optional, store full results for UI
+//     await submission.save();
+
+//     // Update user stats
+//     await updateUserStats(submission);
+
+//   } 
+//   // catch (err) {
+//   //   console.error('Compiler service error:', err.message);
+//   //   submission.verdict = 'System Error';
+//   //   submission.errorMessage = err.message;
+//   //   await submission.save();
+//   // }
+//   catch (err) {
+//   console.error('Compiler service error FULL:', err);  // logs the whole error object
+//   console.error('STACK:', err.stack);                  // shows call stack
+//   console.error('NAME:', err.name);                    // error type
+//   console.error('MESSAGE:', err.message);              // short message
+
+//   submission.verdict = 'System Error';
+//   submission.errorMessage = err.stack || err.message;  // save stack trace for debugging
+//   await submission.save();
+// }
+// }
 
 
 async function processSubmission(submission, problem) {
@@ -340,6 +381,105 @@ exports.getUserSubmissions = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
+
+
+exports.downloadSourceCode = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const submission = await Submission.findById(id);
+    if (!submission || !submission.filePath) {
+      return res.status(404).json({ error: "Submission or file not found" });
+    }
+
+    return res.download(submission.filePath);
+  } catch (err) {
+    res.status(500).json({ error: "Download failed", details: err.message });
+  }
+};
+
+exports.getProblemSubmissions = catchAsyncErrors(async (req, res, next) => {
+  const { problemId } = req.params;
+  const { page = 1, limit = 20 } = req.query;
+
+  const problem = await Problem.findById(problemId);
+  if (!problem) {
+    return next(new ErrorHandler("Problem not found", 404));
+  }
+
+  const submissions = await Submission.find({
+    problemId,
+    userId: req.user._id,
+  })
+    .sort({ createdAt: -1 })
+    .limit(Number(limit))
+    .skip((page - 1) * limit);
+
+  const total = await Submission.countDocuments({
+    problemId,
+    userId: req.user._id,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Problem submissions retrieved successfully",
+    data: {
+      submissions,
+      totalPages: Math.ceil(total / limit),
+      currentPage: Number(page),
+      total,
+    },
+  });
+});
+
+exports.getSubmissionStats = catchAsyncErrors(async (req, res, next) => {
+  const userId = req.user._id;
+  console.trace("reached here");
+  const stats = await Submission.aggregate([
+    { $match: { userId } },
+    {
+      $group: {
+        _id: "$verdict",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const totalSubmissions = await Submission.countDocuments({ userId });
+
+  const acceptedSubmissions =
+    stats.find((s) => s._id === "Accepted")?.count || 0;
+  const acceptanceRate =
+    totalSubmissions > 0
+      ? ((acceptedSubmissions / totalSubmissions) * 100).toFixed(2)
+      : 0;
+
+  const solvedProblems = await Submission.distinct("problemId", {
+    userId,
+    verdict: "Accepted",
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Submission stats retrieved successfully",
+    data: {
+      totalSubmissions,
+      acceptedSubmissions,
+      acceptanceRate: parseFloat(acceptanceRate),
+      solvedProblems: solvedProblems.length,
+      verdictBreakdown: stats,
+    },
+  });
+});
+
+exports.getMySubmissions = catchAsyncErrors(async (req, res, next) => {
+  req.params.userId = req.user._id.toString();
+  return exports.getUserSubmissions(req, res, next);
+});
+
+
+
+
 function normalizeOutput(outputStr) {
   const cleanStr = outputStr.replace(/\r/g, "").trim();
 
@@ -495,97 +635,3 @@ exports.runSampleTest = async (req, res, next) => {
       .json({ error: "Sample execution failed", details: err.message });
   }
 };
-
-exports.downloadSourceCode = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const submission = await Submission.findById(id);
-    if (!submission || !submission.filePath) {
-      return res.status(404).json({ error: "Submission or file not found" });
-    }
-
-    return res.download(submission.filePath);
-  } catch (err) {
-    res.status(500).json({ error: "Download failed", details: err.message });
-  }
-};
-
-exports.getProblemSubmissions = catchAsyncErrors(async (req, res, next) => {
-  const { problemId } = req.params;
-  const { page = 1, limit = 20 } = req.query;
-
-  const problem = await Problem.findById(problemId);
-  if (!problem) {
-    return next(new ErrorHandler("Problem not found", 404));
-  }
-
-  const submissions = await Submission.find({
-    problemId,
-    userId: req.user._id,
-  })
-    .sort({ createdAt: -1 })
-    .limit(Number(limit))
-    .skip((page - 1) * limit);
-
-  const total = await Submission.countDocuments({
-    problemId,
-    userId: req.user._id,
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "Problem submissions retrieved successfully",
-    data: {
-      submissions,
-      totalPages: Math.ceil(total / limit),
-      currentPage: Number(page),
-      total,
-    },
-  });
-});
-
-exports.getSubmissionStats = catchAsyncErrors(async (req, res, next) => {
-  const userId = req.user._id;
-  console.trace("reached here");
-  const stats = await Submission.aggregate([
-    { $match: { userId } },
-    {
-      $group: {
-        _id: "$verdict",
-        count: { $sum: 1 },
-      },
-    },
-  ]);
-
-  const totalSubmissions = await Submission.countDocuments({ userId });
-
-  const acceptedSubmissions =
-    stats.find((s) => s._id === "Accepted")?.count || 0;
-  const acceptanceRate =
-    totalSubmissions > 0
-      ? ((acceptedSubmissions / totalSubmissions) * 100).toFixed(2)
-      : 0;
-
-  const solvedProblems = await Submission.distinct("problemId", {
-    userId,
-    verdict: "Accepted",
-  });
-
-  res.status(200).json({
-    success: true,
-    message: "Submission stats retrieved successfully",
-    data: {
-      totalSubmissions,
-      acceptedSubmissions,
-      acceptanceRate: parseFloat(acceptanceRate),
-      solvedProblems: solvedProblems.length,
-      verdictBreakdown: stats,
-    },
-  });
-});
-
-exports.getMySubmissions = catchAsyncErrors(async (req, res, next) => {
-  req.params.userId = req.user._id.toString();
-  return exports.getUserSubmissions(req, res, next);
-});

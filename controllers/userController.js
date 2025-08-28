@@ -4,12 +4,9 @@ const Submission = require("../models/Submission");
 const ErrorHandler = require("../middlewares/errorMiddleware");
 const { catchAsyncErrors} = require("../middlewares/catchAsyncErrors");
 const mongoose = require("mongoose");
+const User=require('../models/User');
 
-/**
- * @description Get user profile with stats
- * @route GET /api/users/:userId/profile
- * @access Public
- */
+
 exports.getUserProfile = catchAsyncErrors(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -81,4 +78,59 @@ exports.getUserActivity = catchAsyncErrors(async (req, res, next) => {
     success: true,
     data: heatmap
   });
+});
+
+exports.getAuthenticatedUserProfile = catchAsyncErrors(async (req, res, next) => {
+    // req.user is populated by your authentication middleware (e.g., isAuthenticatedUser)
+    const user = await User.findById(req.user.id).lean();
+
+    if (!user) {
+        return next(new ErrorHandler("User not found.", 404));
+    }
+
+    // We don't want to send the password, even the hashed one.
+    const { password, ...userData } = user;
+
+    res.status(200).json({
+        success: true,
+        data: userData,
+    });
+});
+
+exports.updateUserProfile = catchAsyncErrors(async (req, res, next) => {
+    const { fullName, username, gender, location, website } = req.body;
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+        return next(new ErrorHandler("User not found.", 404));
+    }
+
+    user.fullName = fullName || user.fullName;
+    user.username = username || user.username;
+    user.gender = gender || user.gender;
+    user.location = location || user.location;
+    user.website = website || user.website;
+
+    // Handle avatar upload
+    if (req.files && req.files.avatar) {
+        // const result = await cloudinary.v2.uploader.upload(req.files.avatar.tempFilePath, {
+        //     folder: 'avatars',
+        //     width: 150,
+        //     crop: 'scale',
+        //     public_id: `${Date.now()}-${user._id}`
+        // });
+        // user.avatar = result.secure_url;
+        
+        console.log("Avatar file received, ready for upload.");
+    }
+
+    await user.save();
+
+    const { password, ...updatedUserData } = user.toObject();
+
+    res.status(200).json({
+        success: true,
+        message: "Profile updated successfully.",
+        data: updatedUserData,
+    });
 });

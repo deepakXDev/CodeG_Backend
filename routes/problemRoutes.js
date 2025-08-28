@@ -5,6 +5,7 @@ const {
   createProblem,
   updateProblem,
   getProblemById,
+  getMyProblems,
 } = require("../controllers/problemController");
 const {
   isAuthenticated,
@@ -52,6 +53,13 @@ const validateProblemCreation = [
   },
 ];
 
+router.get(
+    "/my-problems",
+    isAuthenticated,
+    // isAdminOrProblem_Setter, // Protect the route
+    getMyProblems
+);
+
 router.get("/", getProblems);
 router.get("/id/:id", getProblemById); // fetch by MongoId
 router.get("/:slug", getProblemBySlug); // fetch by slug
@@ -63,6 +71,8 @@ router.post(
   validateProblemCreation,
   createProblem
 );
+
+
 
 router.put(
   "/:slug",

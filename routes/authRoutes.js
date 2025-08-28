@@ -9,6 +9,7 @@ const {
   verifyOTP,
   updatePassword,
   googleLogin,
+  resendOtp,
 } = require("../controllers/authController");
 const { isAuthenticated } = require("../middlewares/authMiddleware");
 const { body: body, validationResult } = require("express-validator");
@@ -61,6 +62,7 @@ const validateRegistration = [
 
 router.post("/register", validateRegistration, register); //as update if already registered with googleAuth
 router.post("/verify-otp", verifyOTP);
+router.post("/resend-otp",resendOtp)
 router.post("/login", login);
 router.get("/logout", isAuthenticated, logout);
 router.get("/profile", isAuthenticated, getUser);

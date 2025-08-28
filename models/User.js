@@ -27,6 +27,14 @@ const userSchema = new mongoose.Schema(
     },
 
     accountVerified: { type: Boolean, default: false },
+
+    fullName: { type: String, trim: true }, 
+    username: { type: String, unique: true, sparse: true, trim: true }, 
+    avatar: { type: String },
+    gender: { type: String, enum: ['M', 'F', 'O', 'N'], default: 'N' }, 
+    location: { type: String, trim: true },
+    website: { type: String, trim: true },
+
     pwdSetupAttempts: {
       count: { type: Number, default: 0 },
       lastAttempt: Date,
@@ -42,12 +50,20 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+userSchema.pre('save', function(next) {
+    if (!this.fullName) {
+        this.fullName = this.name;
+    }
+    next();
+});
+
+
 userSchema.methods.generateVerificationCode = function () {
   function generateRandomFiveDigitNumber() {
     const firstDigit = Math.floor(Math.random() * 9) + 1;
-    const remainingDigits = Math.floor(Math.random() * 10000)
+    const remainingDigits = Math.floor(Math.random() * 100000)
       .toString()
-      .padStart(4, "0");
+      .padStart(5, "0");
 
     return parseInt(firstDigit + remainingDigits);
   }

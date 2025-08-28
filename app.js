@@ -5,6 +5,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const { errorMiddleware } = require("./middlewares/errorMiddleware"); 
 const connectDB = require("./database/db");
+const fileUpload = require('express-fileupload');
 
 const authRouter = require("./routes/authRoutes"); 
 const problemRouter = require("./routes/problemRoutes");
@@ -27,11 +28,11 @@ app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); //for parsing form data
-
+app.use(fileUpload({ useTempFiles: true }));
 
 app.use("/auth", authRouter);
 app.use("/problems", problemRouter);
-app.use("/user", userRouter);
+app.use("/users", userRouter);
 app.use("/submission", submissionRouter);
 
 

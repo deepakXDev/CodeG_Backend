@@ -3,6 +3,7 @@ const {
   submitSolution,
   getSubmission,
   getUserSubmissions,
+  compilerCallback,
 } = require("../controllers/submissionController");
 
 const controller = require("../controllers/submissionController");
@@ -47,6 +48,13 @@ router.post(
   validateSubmission,
   submitSolution
 );
+
+// This endpoint is called BY THE COMPILER SERVICE, not the user's browser.
+router.post('/:id/callback',compilerCallback);
+
+
+
+
 
 router.get(
   "/stats",
