@@ -22,7 +22,7 @@ const router = express.Router();
 const validateSubmission = [
   body("problemId").notEmpty().withMessage("ProblemId is required"),
   body("language")
-    .isIn(["cpp", "java", "python", "javascript"])
+    .isIn(["cpp", "java", "python", "javascript", 'c'])
     .withMessage("Invalid language"),
 
   (req, res, next) => {
