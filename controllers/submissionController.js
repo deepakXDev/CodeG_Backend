@@ -102,7 +102,7 @@ if (!codeToSend && submission.filePath && fs.existsSync(submission.filePath)) {
 }
 
 exports.compilerCallback= async (req, res, next) => {
-  const { secretToken, results, verdict } = req.body;
+  const { secretToken, results, verdict, errorDetails } = req.body;
   if (secretToken !== process.env.COMPILER_SECRET_TOKEN) {
     return next(new ErrorHandler("Unauthorized", 403));
   }
@@ -112,9 +112,12 @@ exports.compilerCallback= async (req, res, next) => {
     return next(new ErrorHandler("Submission not found", 404));
   }
 
+  console.log(errorDetails);
+
   submission.verdict = verdict;
   submission.testCasesPassed = results.filter(r => r.passed).length;
   submission.totalTestCases = results.length;
+  submission.errorDetails = errorDetails;
   await submission.save();
 
   await updateUserStats(submission);

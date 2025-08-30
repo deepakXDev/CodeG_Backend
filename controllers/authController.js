@@ -330,7 +330,7 @@ exports.logout = catchAsyncErrors(async (req, res, next) => {
 
 exports.getUser = catchAsyncErrors(async (req, res, next) => {
   const user = req.user; //full detail of user,from authMiddleware (findById(decoded_id));
-  console.log(user);
+  // console.log(user);
   res.status(200).json({
     success: true,
     user,

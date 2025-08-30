@@ -23,6 +23,11 @@ const submissionSchema = new mongoose.Schema(
       required: true,
     },
 
+    errorDetails: {
+    type: String,
+    default: null
+  },
+
     sourceCode: { type: String },
     filePath: { type: String },
     verdict: {
