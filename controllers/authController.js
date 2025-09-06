@@ -75,7 +75,7 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
     user.name = name;
     user.password = hashedPassword;
     user.accountVerified = false;
-    user.role = role; //keep changing role, until verified..
+    user.role = role;
     user.registrationSessionId = registrationSessionId;
     user.pwdSetupAttempts = {
       count: diff < 24 ? (user.pwdSetupAttempts?.count || 0) + 1 : 1,
@@ -97,73 +97,50 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
     const verificationCode = newUser.generateVerificationCode();
     await newUser.save();
     sendVerificationCode(verificationCode, email, res, registrationSessionId);
-
-    // newUser.accountVerified = true;
-    // newUser.verificationCode = null;
-    // newUser.verificationCodeExpire = null;
-    // newUser.isPwdAuth = true;
-    // newUser.registrationSessionId = null; // Clear after use
-
-    // if (newUser.tempPassword) {
-    //   newUser.password = newUser.tempPassword;
-    //   newUser.tempPassword = null;
-    //   newUser.pwdSetupAttempts = { count: 0, lastAttempt: null };
-    // }
-    // await newUser.save({ validateModifiedOnly: true });
-    // res.clearCookie("email");
-    // sendToken(newUser, 200, "Account Verified.", res);
-    // console.log(newUser);
   }
 });
 
 exports.resendOtp = catchAsyncErrors(async (req, res, next) => {
-    const { email } = req.body;
+  const { email } = req.body;
 
-    if (!email) {
-        return next(new ErrorHandler("Email is required.", 400));
-    }
+  if (!email) {
+    return next(new ErrorHandler("Email is required.", 400));
+  }
 
-    const user = await User.findOne({ email });
+  const user = await User.findOne({ email });
 
-    // Important security check: Only allow resend for unverified accounts.
-    if (!user || user.accountVerified) {
-        // Send a generic success message even if the user doesn't exist or is verified.
-        // This prevents attackers from guessing which emails are registered.
-        return res.status(200).json({
-            success: true,
-            message: "If an account with that email exists, a new OTP has been sent.",
-        });
-    }
+  if (!user || user.accountVerified) {
+    return res.status(200).json({
+      success: true,
+      message: "If an account with that email exists, a new OTP has been sent.",
+    });
+  }
 
-    const now = new Date();
-    const lastAttempt = user.pwdSetupAttempts?.lastAttempt || new Date(0);
-    const diffHours = (now - lastAttempt) / (1000 * 60 * 60);
+  const now = new Date();
+  const lastAttempt = user.pwdSetupAttempts?.lastAttempt || new Date(0);
+  const diffHours = (now - lastAttempt) / (1000 * 60 * 60);
 
-    // Rate Limiting: Prevent spamming the resend functionality.
-    if (diffHours < 24 && (user.pwdSetupAttempts?.count || 0) >= 10) {
-        return next(
-            new ErrorHandler(
-                "You have made too many attempts. Please try again after 24 hours.",
-                429 // HTTP 429: Too Many Requests
-            )
-        );
-    }
+  if (diffHours < 24 && (user.pwdSetupAttempts?.count || 0) >= 10) {
+    return next(
+      new ErrorHandler(
+        "You have made too many attempts. Please try again after 24 hours.",
+        429
+      )
+    );
+  }
 
-    // Update attempt count and timestamp
-    user.pwdSetupAttempts = {
-        count: diffHours < 24 ? (user.pwdSetupAttempts?.count || 0) + 1 : 1,
-        lastAttempt: now,
-    };
+  user.pwdSetupAttempts = {
+    count: diffHours < 24 ? (user.pwdSetupAttempts?.count || 0) + 1 : 1,
+    lastAttempt: now,
+  };
 
-    // Generate a new verification code and session ID
-    const registrationSessionId = crypto.randomUUID();
-    user.registrationSessionId = registrationSessionId;
-    const verificationCode = user.generateVerificationCode(); // This method should also set the new expiry date
+  const registrationSessionId = crypto.randomUUID();
+  user.registrationSessionId = registrationSessionId;
+  const verificationCode = user.generateVerificationCode();
 
-    await user.save();
+  await user.save();
 
-    // Send the new verification code via email
-    sendVerificationCode(verificationCode, email, res, registrationSessionId);
+  sendVerificationCode(verificationCode, email, res, registrationSessionId);
 });
 
 exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {
@@ -182,7 +159,7 @@ exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {
     const user = await User.findOne({
       email,
       verificationCode: otp,
-      registrationSessionId, // Must match
+      registrationSessionId,
     });
 
     if (!user) {
@@ -198,7 +175,7 @@ exports.verifyOTP = catchAsyncErrors(async (req, res, next) => {
     user.verificationCode = null;
     user.verificationCodeExpire = null;
     user.isPwdAuth = true;
-    user.registrationSessionId = null; // Clear after use
+    user.registrationSessionId = null;
 
     if (user.tempPassword) {
       user.password = user.tempPassword;
@@ -228,12 +205,10 @@ exports.login = catchAsyncErrors(async (req, res, next) => {
   }).select("+password");
 
   if (!user) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "User not found. Please register first.",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "User not found. Please register first.",
+    });
   }
 
   if (!user.isPwdAuth) {
@@ -270,7 +245,7 @@ async function verifyGoogleToken(token) {
 
 exports.googleLogin = catchAsyncErrors(async (req, res, next) => {
   const { token, role } = req.body;
-  console.log("Received token:", token); // In your backend route
+  console.log("Received token:", token);
   console.log("role from frontend provided to this googleLoginRoute:", role);
 
   if (!token || !role) {
@@ -280,7 +255,7 @@ exports.googleLogin = catchAsyncErrors(async (req, res, next) => {
   const googleUser = await verifyGoogleToken(token);
 
   const { name, email, picture, sub: googleId } = googleUser;
-  console.log("Google User:", googleUser); // In your backend route
+  console.log("Google User:", googleUser);
 
   let user = await User.findOne({ email });
   if (!user) {
@@ -318,7 +293,7 @@ exports.logout = catchAsyncErrors(async (req, res, next) => {
   res
     .status(200)
     .cookie("token", "", {
-      expires: new Date(0), // Expire cookie immediately
+      expires: new Date(0),
 
       httpOnly: true,
     })
@@ -329,8 +304,8 @@ exports.logout = catchAsyncErrors(async (req, res, next) => {
 });
 
 exports.getUser = catchAsyncErrors(async (req, res, next) => {
-  const user = req.user; //full detail of user,from authMiddleware (findById(decoded_id));
-  // console.log(user);
+  const user = req.user;
+
   res.status(200).json({
     success: true,
     user,
@@ -361,7 +336,7 @@ exports.forgotPassword = catchAsyncErrors(async (req, res, next) => {
     user.forgotPasswordAttemptsExpire < Date.now()
   ) {
     user.forgotPasswordAttempts = 0;
-    user.forgotPasswordAttemptsExpire = Date.now() + 60 * 60 * 1000; // 1 hour expiry
+    user.forgotPasswordAttemptsExpire = Date.now() + 60 * 60 * 1000;
   }
 
   if (user.forgotPasswordAttempts >= 3) {
@@ -414,7 +389,7 @@ exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findOne({
     resetPasswordToken,
     resetPasswordExpire: { $gt: Date.now() },
-  }).select("+password"); // 🔥 Ensure password is included
+  }).select("+password");
 
   if (!user) {
     return next(
@@ -460,7 +435,7 @@ exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
   }
 
   user.password = await bcrypt.hash(newPassword, 10);
-  user.tokenVersion += 1; // 🔥 Increments token version, invalidating old JWTs
+  user.tokenVersion += 1;
 
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;

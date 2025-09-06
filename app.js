@@ -21,13 +21,13 @@ const corsOptions = {
   credentials: true,
 };
 
-// 👉 Postman is not restricted by CORS at all.
-// CORS is a browser-side security feature. So Postman does not trigger CORS errors.
+
+
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true })); //for parsing form data
+app.use(express.urlencoded({ extended: true })); 
 app.use(fileUpload({ useTempFiles: true }));
 
 app.use("/auth", authRouter);

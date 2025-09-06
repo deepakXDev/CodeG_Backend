@@ -1,35 +1,34 @@
-
 const UserStats = require("../models/UserStats");
 const Submission = require("../models/Submission");
 const ErrorHandler = require("../middlewares/errorMiddleware");
-const { catchAsyncErrors} = require("../middlewares/catchAsyncErrors");
+const { catchAsyncErrors } = require("../middlewares/catchAsyncErrors");
 const mongoose = require("mongoose");
-const User=require('../models/User');
-
+const User = require("../models/User");
 
 exports.getUserProfile = catchAsyncErrors(async (req, res, next) => {
   const { userId } = req.params;
 
   const userStats = await UserStats.findOne({ userId })
-    .populate('solvedProblems', 'title slug difficulty')
+    .populate("solvedProblems", "title slug difficulty")
     .lean();
 
   if (!userStats) {
-    return next(new ErrorHandler('User stats not found', 404));
+    return next(new ErrorHandler("User stats not found", 404));
   }
 
-
   const solvedByDifficulty = {
-    Easy: userStats.solvedProblems.filter(p => p.difficulty === 'Easy').length,
-    Medium: userStats.solvedProblems.filter(p => p.difficulty === 'Medium').length,
-    Hard: userStats.solvedProblems.filter(p => p.difficulty === 'Hard').length
+    Easy: userStats.solvedProblems.filter((p) => p.difficulty === "Easy")
+      .length,
+    Medium: userStats.solvedProblems.filter((p) => p.difficulty === "Medium")
+      .length,
+    Hard: userStats.solvedProblems.filter((p) => p.difficulty === "Hard")
+      .length,
   };
-
 
   const recentSubmissions = await Submission.find({ userId })
     .sort({ createdAt: -1 })
     .limit(5)
-    .populate('problem', 'title slug')
+    .populate("problem", "title slug")
     .lean();
 
   res.status(200).json({
@@ -40,11 +39,11 @@ exports.getUserProfile = catchAsyncErrors(async (req, res, next) => {
         totalSubmissions: userStats.totalSubmissions,
         currentStreak: userStats.currentStreak,
         highestStreak: userStats.highestStreak,
-        solvedByDifficulty
+        solvedByDifficulty,
       },
       solvedProblems: userStats.solvedProblems,
-      recentSubmissions
-    }
+      recentSubmissions,
+    },
   });
 });
 
@@ -56,81 +55,72 @@ exports.getUserProfile = catchAsyncErrors(async (req, res, next) => {
 exports.getUserActivity = catchAsyncErrors(async (req, res, next) => {
   const { userId } = req.params;
   const requestingUserId = req.user._id;
-  const isAdmin = req.user.role === 'ADMIN';
-
+  const isAdmin = req.user.role === "ADMIN";
 
   if (userId !== requestingUserId.toString() && !isAdmin) {
-    return next(new ErrorHandler('Unauthorized access', 403));
+    return next(new ErrorHandler("Unauthorized access", 403));
   }
 
   const userStats = await UserStats.findOne({ userId }).lean();
   if (!userStats) {
-    return next(new ErrorHandler('User stats not found', 404));
+    return next(new ErrorHandler("User stats not found", 404));
   }
 
-
-  const heatmap = Object.entries(userStats.activityHeatmap || {}).map(([date, count]) => ({
-    date,
-    count
-  }));
+  const heatmap = Object.entries(userStats.activityHeatmap || {}).map(
+    ([date, count]) => ({
+      date,
+      count,
+    })
+  );
 
   res.status(200).json({
     success: true,
-    data: heatmap
+    data: heatmap,
   });
 });
 
-exports.getAuthenticatedUserProfile = catchAsyncErrors(async (req, res, next) => {
-    // req.user is populated by your authentication middleware (e.g., isAuthenticatedUser)
+exports.getAuthenticatedUserProfile = catchAsyncErrors(
+  async (req, res, next) => {
     const user = await User.findById(req.user.id).lean();
 
     if (!user) {
-        return next(new ErrorHandler("User not found.", 404));
+      return next(new ErrorHandler("User not found.", 404));
     }
 
-    // We don't want to send the password, even the hashed one.
     const { password, ...userData } = user;
 
     res.status(200).json({
-        success: true,
-        data: userData,
+      success: true,
+      data: userData,
     });
-});
+  }
+);
 
 exports.updateUserProfile = catchAsyncErrors(async (req, res, next) => {
-    const { fullName, username, gender, location, website } = req.body;
+  const { fullName, username, gender, location, website } = req.body;
 
-    const user = await User.findById(req.user.id);
-    if (!user) {
-        return next(new ErrorHandler("User not found.", 404));
-    }
+  const user = await User.findById(req.user.id);
+  if (!user) {
+    return next(new ErrorHandler("User not found.", 404));
+  }
 
-    user.fullName = fullName || user.fullName;
-    user.username = username || user.username;
-    user.gender = gender || user.gender;
-    user.location = location || user.location;
-    user.website = website || user.website;
+  user.fullName = fullName || user.fullName;
+  user.username = username || user.username;
+  user.gender = gender || user.gender;
+  user.location = location || user.location;
+  user.website = website || user.website;
 
-    // Handle avatar upload
-    if (req.files && req.files.avatar) {
-        // const result = await cloudinary.v2.uploader.upload(req.files.avatar.tempFilePath, {
-        //     folder: 'avatars',
-        //     width: 150,
-        //     crop: 'scale',
-        //     public_id: `${Date.now()}-${user._id}`
-        // });
-        // user.avatar = result.secure_url;
-        
-        console.log("Avatar file received, ready for upload.");
-    }
+  if (req.files && req.files.avatar) {
+    console.log("Avatar file received, ready for upload.");
+  }
 
-    await user.save();
+  await user.save();
 
-    const { password, ...updatedUserData } = user.toObject();
+  const { password, ...updatedUserData } = user.toObject();
 
-    res.status(200).json({
-        success: true,
-        message: "Profile updated successfully.",
-        data: updatedUserData,
-    });
+  res.status(200).json({
+    success: true,
+    message: "Profile updated successfully.",
+    data: updatedUserData,
+  });
 });

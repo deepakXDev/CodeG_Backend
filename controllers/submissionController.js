@@ -10,7 +10,7 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const os = require("os");
 const executeCode = require("../utils/codeRunner");
-const axios = require('axios');
+const axios = require("axios");
 const compilerURL = process.env.COMPILER_URL;
 
 exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
@@ -45,63 +45,51 @@ exports.submitSolution = catchAsyncErrors(async (req, res, next) => {
     userId,
     problemId: problem._id,
     language,
-    sourceCode: sourceCode || "", // still store raw text for UI view
+    sourceCode: sourceCode || "",
     filePath: sourceFilePath,
     verdict: "Pending",
   });
-
-//   if (!submission.sourceCode) {
-//   throw new Error("Submission missing source code");
-// }
 
   res.status(202).json({
     success: true,
     submissionId: submission._id,
   });
 
-  // processSubmission(submission, problem).catch((err) => {
-  //   console.error("Submission processing error:", err);
-
-  //   submission.verdict = "System Error";
-  //   submission.errorMessage = "System error during processing";
-  //   submission.save();
-  // });
-  
-    // Send to compiler service asynchronously
-    sendToCompilerService(submission, problem);
+  sendToCompilerService(submission, problem);
 });
 
 async function sendToCompilerService(submission, problem) {
   try {
     let codeToSend = submission.sourceCode;
 
-// If sourceCode is empty (uploaded file case), read from filePath
-if (!codeToSend && submission.filePath && fs.existsSync(submission.filePath)) {
-  codeToSend = fs.readFileSync(submission.filePath, "utf-8");
-}
+    if (
+      !codeToSend &&
+      submission.filePath &&
+      fs.existsSync(submission.filePath)
+    ) {
+      codeToSend = fs.readFileSync(submission.filePath, "utf-8");
+    }
 
-  const callbackUrl = `${process.env.BACKEND_URL}/submission/${submission._id}/callback`;
+    const callbackUrl = `${process.env.BACKEND_URL}/submission/${submission._id}/callback`;
 
-  // Fire-and-forget the request to the compiler. (no await)
     axios.post(`${compilerURL}/process-submission`, {
       language: submission.language,
       sourceCode: codeToSend,
       testCases: problem.testCases,
       timeLimit: problem.timeLimit,
       memoryLimit: problem.memoryLimit,
-      callbackUrl: callbackUrl, 
-      secretToken: process.env.COMPILER_SECRET_TOKEN 
+      callbackUrl: callbackUrl,
+      secretToken: process.env.COMPILER_SECRET_TOKEN,
     });
   } catch (err) {
-    // This will now only catch errors if the initial axios.post fails to send.
-    console.error('Failed to dispatch job to compiler service:', err.message);
-    submission.verdict = 'System Error';
-    submission.errorMessage = 'Failed to dispatch job to compiler.';
+    console.error("Failed to dispatch job to compiler service:", err.message);
+    submission.verdict = "System Error";
+    submission.errorMessage = "Failed to dispatch job to compiler.";
     await submission.save();
   }
 }
 
-exports.compilerCallback= async (req, res, next) => {
+exports.compilerCallback = async (req, res, next) => {
   const { secretToken, results, verdict, errorDetails } = req.body;
   if (secretToken !== process.env.COMPILER_SECRET_TOKEN) {
     return next(new ErrorHandler("Unauthorized", 403));
@@ -115,66 +103,22 @@ exports.compilerCallback= async (req, res, next) => {
   console.log(errorDetails);
 
   submission.verdict = verdict;
-  submission.testCasesPassed = results.filter(r => r.passed).length;
+  submission.testCasesPassed = results.filter((r) => r.passed).length;
   submission.totalTestCases = results.length;
   submission.errorDetails = errorDetails;
   await submission.save();
 
   await updateUserStats(submission);
-  
+
   res.status(200).json({ success: true, message: "Callback received." });
-}
-
-
-
-    // Call compiler service
-    // const compilerResponse = await axios.post('http://localhost:5001/process-submission', {
-    // const compilerResponse=await axios.post(`${compilerURL}/process-submission`,{
-    //   language: submission.language,
-    //   sourceCode: codeToSend,
-    //   testCases: problem.testCases,
-    //   timeLimit: problem.timeLimit,
-    //   memoryLimit: problem.memoryLimit
-    // });
-
-//     const { results, verdict } = compilerResponse.data;
-
-//     // Update submission in DB
-//     submission.verdict = verdict;
-//     submission.testCasesPassed = results.filter(r => r.passed).length;
-//     submission.totalTestCases = results.length;
-//     submission.resultDetails = results; // optional, store full results for UI
-//     await submission.save();
-
-//     // Update user stats
-//     await updateUserStats(submission);
-
-//   } 
-//   // catch (err) {
-//   //   console.error('Compiler service error:', err.message);
-//   //   submission.verdict = 'System Error';
-//   //   submission.errorMessage = err.message;
-//   //   await submission.save();
-//   // }
-//   catch (err) {
-//   console.error('Compiler service error FULL:', err);  // logs the whole error object
-//   console.error('STACK:', err.stack);                  // shows call stack
-//   console.error('NAME:', err.name);                    // error type
-//   console.error('MESSAGE:', err.message);              // short message
-
-//   submission.verdict = 'System Error';
-//   submission.errorMessage = err.stack || err.message;  // save stack trace for debugging
-//   await submission.save();
-// }
-// }
-
+};
 
 async function processSubmission(submission, problem) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const tempDir = path.resolve(process.cwd(), "temp"); //not join, to avoid issue accross OSes
+    const tempDir = path.resolve(process.cwd(), "temp");
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir);
     }
@@ -190,7 +134,7 @@ async function processSubmission(submission, problem) {
     const totalCases = problem.testCases.length;
 
     for (const testCase of problem.testCases) {
-      fs.writeFileSync(inputFile, testCase.input); //- Clears file first → then writes this input.
+      fs.writeFileSync(inputFile, testCase.input);
 
       const result = await executeCode(
         submission.language,
@@ -246,18 +190,18 @@ async function processSubmission(submission, problem) {
 
 function getVerdictFromError(code) {
   switch (code) {
-    case 137: // SIGKILL (memory limit)
+    case 137:
       return "Memory Limit Exceeded";
-    case 124: // Timeout
+    case 124:
       return "Time Limit Exceeded";
-    case 1: // Runtime error
+    case 1:
       return "Runtime Error";
     default:
-      return "System Error"; // System error
+      return "System Error";
   }
 }
 
-async function updateUserStats(submission, session=null) {
+async function updateUserStats(submission, session = null) {
   const userId = submission.userId;
   const problemId = submission.problemId;
   const verdict = submission.verdict;
@@ -268,7 +212,7 @@ async function updateUserStats(submission, session=null) {
 
   const problem = await Problem.findById(problemId);
   if (!problem) throw new Error("Problem not found");
-  const difficulty = problem.difficulty; // 'easy', 'medium', 'hard'
+  const difficulty = problem.difficulty;
 
   const statsUpdate = {
     $inc: {
@@ -301,7 +245,7 @@ async function updateUserStats(submission, session=null) {
     }
   }
 
-  statsUpdate.$inc = statsUpdate.$inc || {}; //Hence, you **ensure `$inc` exists** before you assign:
+  statsUpdate.$inc = statsUpdate.$inc || {};
   statsUpdate.$inc[`activityHeatmap.${submissionDate}`] = 1;
 
   await UserStats.findOneAndUpdate({ userId }, statsUpdate, {
@@ -355,7 +299,7 @@ exports.getSubmission = catchAsyncErrors(async (req, res, next) => {
  */
 exports.getUserSubmissions = catchAsyncErrors(async (req, res, next) => {
   const { userId } = req.params;
-  const requestingUserId = req.user._id; //when by this method, then use .toString()
+  const requestingUserId = req.user._id;
   const isAdmin = req.user.role === "ADMIN";
 
   if (userId !== requestingUserId.toString() && !isAdmin) {
@@ -380,11 +324,9 @@ exports.getUserSubmissions = catchAsyncErrors(async (req, res, next) => {
   res.status(200).json({
     success: true,
 
-    data: { submissions }, // Ensure frontend can read: data.data.submissions
+    data: { submissions },
   });
 });
-
-
 
 exports.downloadSourceCode = async (req, res) => {
   try {
@@ -480,9 +422,6 @@ exports.getMySubmissions = catchAsyncErrors(async (req, res, next) => {
   return exports.getUserSubmissions(req, res, next);
 });
 
-
-
-
 function normalizeOutput(outputStr) {
   const cleanStr = outputStr.replace(/\r/g, "").trim();
 
@@ -490,10 +429,10 @@ function normalizeOutput(outputStr) {
     return JSON.parse(cleanStr);
   } catch (err) {
     const tokens = cleanStr.split(/\s+/).map((token) => {
-      if (!isNaN(token)) return Number(token); // number
+      if (!isNaN(token)) return Number(token);
       if (token === "true") return true;
       if (token === "false") return false;
-      return token; // raw string
+      return token;
     });
     return tokens.length === 1 ? tokens[0] : tokens;
   }
@@ -538,7 +477,6 @@ function compareTestCase(expectedStr, rawOutput) {
 }
 
 exports.runSampleTest = async (req, res, next) => {
-
   try {
     const { language, customInput, sourceCode } = req.body;
 
